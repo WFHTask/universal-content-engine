@@ -1,0 +1,365 @@
+{
+    "name": "Universal Content Engine v2.2",
+    "nodes": [
+        {
+            "parameters": {
+                "httpMethod": "POST",
+                "path": "content-engine-v2_2",
+                "responseMode": "lastNode",
+                "options": {
+                    "responseContentType": "application/json"
+                }
+            },
+            "id": "b8796dde-38e8-4b24-bff5-d93080c9aa5d",
+            "name": "Webhook Trigger",
+            "type": "n8n-nodes-base.webhook",
+            "typeVersion": 1,
+            "position": [
+                -528,
+                400
+            ],
+            "webhookId": "6afb112b-bc2a-48af-b85c-6a63f8fd36b2"
+        },
+        {
+            "parameters": {
+                "functionCode": "const item = items[0];\nconst input = item.json;\n\nif (!input.brand_profile) {\n  throw new Error('Missing required \"brand_profile\".');\n}\nif (!input.content_task) {\n  throw new Error('Missing required \"content_task\".');\n}\nconst phase = (input.phase || 'idea_generation').trim();\nif (!['idea_generation', 'content_production'].includes(phase)) {\n  throw new Error('Invalid \"phase\". Use \"idea_generation\" or \"content_production\".');\n}\nif (!input.content_task.objective) {\n  throw new Error('Missing required \"content_task.objective\".');\n}\nif (!Array.isArray(input.content_task.output_platforms) || input.content_task.output_platforms.length === 0) {\n  throw new Error('\"content_task.output_platforms\" must be a non-empty array.');\n}\nif (!Array.isArray(input.brand_profile.exemplars) || input.brand_profile.exemplars.length === 0) {\n  throw new Error('\"brand_profile.exemplars\" must include at least one exemplar sample.');\n}\nitem.json.phase = phase;\nreturn items;"
+            },
+            "id": "b671b1e7-eb62-4a50-ac69-3952833c3cc5",
+            "name": "Validate Input",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                -208,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "value1": "={{$json[\"phase\"]}}",
+                "rules": [
+                    {
+                        "operation": "equal",
+                        "value2": "idea_generation"
+                    },
+                    {
+                        "operation": "equal",
+                        "value2": "content_production"
+                    }
+                ]
+            },
+            "id": "a44b905c-2bc5-4ddf-9c75-43bebc9bf016",
+            "name": "Phase Switch",
+            "type": "n8n-nodes-base.switch",
+            "typeVersion": 1,
+            "position": [
+                80,
+                400
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "function detectLanguage(texts = []) {\n  const combined = texts.filter(Boolean).join(' ').trim();\n  const build = (code, label, instruction = label) => ({ code, label, instruction });\n  if (!combined) {\n    return build('en', 'English');\n  }\n  if (/[一-鿿]/.test(combined)) {\n    return build('zh', 'Chinese', '中文');\n  }\n  if (/[぀-ヿ]/.test(combined)) {\n    return build('ja', 'Japanese', '日本語');\n  }\n  if (/[가-힣]/.test(combined)) {\n    return build('ko', 'Korean', '한국어');\n  }\n  if (/[Ѐ-ӿ]/.test(combined)) {\n    return build('ru', 'Russian', 'Russian');\n  }\n  const latinCandidates = [\n    { code: 'es', label: 'Spanish', instruction: 'Spanish', regex: /[ñáéíóúü¡¿]/i },\n    { code: 'fr', label: 'French', instruction: 'French', regex: /[àâçéèêëîïôùûüÿœæ]/i },\n    { code: 'de', label: 'German', instruction: 'German', regex: /[äöüß]/i },\n    { code: 'pt', label: 'Portuguese', instruction: 'Portuguese', regex: /[ãõáâàéêíóôúç]/i },\n    { code: 'it', label: 'Italian', instruction: 'Italian', regex: /[àèéìíîòóùú]/i }\n  ];\n  for (const candidate of latinCandidates) {\n    if (candidate.regex.test(combined)) {\n      return candidate;\n    }\n  }\n  return build('en', 'English');\n}\n\nconst input = items[0].json;\nconst brand = input.brand_profile;\nconst task = input.content_task;\n\nconst tonePositive = Array.isArray(brand.tone_guidelines?.positive) ? brand.tone_guidelines.positive.join('; ') : '';\nconst toneNegative = Array.isArray(brand.tone_guidelines?.negative) ? brand.tone_guidelines.negative.join('; ') : '';\nconst language = detectLanguage([\n  brand.name,\n  brand.description,\n  brand.audience,\n  ...(brand.exemplars || [])\n]);\n\nconst prompt = [\n  '你是一名资深内容策略顾问，需要围绕指定品牌和任务生成不少于 3 个候选内容创意。',\n  `请使用 ${language.instruction} 输出，并返回一个仅包含 ideas 字段的 JSON 对象。`,\n  'ideas 应为数组，每个元素包含 id、title、hook、summary、target_platforms、rationale、language 字段。',\n  '请让 target_platforms 为数组，language 字段写明使用的语言名称。',\n  '所有创意必须紧扣 objective 并且能覆盖多个目标平台。',\n  '',\n  '【品牌背景】',\n  `名称: ${brand.name}`,\n  `描述: ${brand.description}`,\n  `目标受众: ${brand.audience}`,\n  '',\n  `语调建议: ${tonePositive}`,\n  `语调禁忌: ${toneNegative}`,\n  '',\n  `内容任务目标: ${task.objective}`,\n  `热点来源: ${task.source_type} => ${task.source_value}`,\n  `目标平台: ${task.output_platforms.join(', ')}`,\n  '',\n  '请严格返回合法 JSON（不要附加额外说明）。'\n].join('\\n');\n\nreturn [{\n  json: {\n    phase: input.phase,\n    brand_profile: brand,\n    content_task: task,\n    language_code: language.code,\n    language_label: language.label,\n    language_instruction: language.instruction,\n    idea_prompt: prompt\n  }\n}];\n"
+            },
+            "id": "22d41b29-beb8-4f0d-8f6a-620e3d64f8af",
+            "name": "Idea Prompt Builder",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                336,
+                192
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "const raw = items[0].json;\nlet ideas = [];\nif (raw.choices && Array.isArray(raw.choices) && raw.choices[0]?.message?.json) {\n  ideas = raw.choices[0].message.json.ideas || [];\n} else if (raw.message?.json?.ideas) {\n  ideas = raw.message.json.ideas;\n} else if (raw.ideas) {\n  ideas = raw.ideas;\n}\nif (!Array.isArray(ideas) || ideas.length < 3) {\n  throw new Error('LLM 返回的创意数量少于 3 个，请调整提示或温度。');\n}\nreturn [{\n  json: {\n    phase: 'idea_generation',\n    idea_generation_result: {\n      ideas\n    },\n    content_production_result: null\n  }\n}];"
+            },
+            "id": "3d2e264b-c7fa-4bc1-b73a-437582653f5d",
+            "name": "Format Idea Output",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                912,
+                192
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "const input = items[0].json;\nif (!input.selected_idea) {\n  throw new Error('阶段二执行时必须提供 selected_idea，请传入阶段一返回的其中一个创意。');\n}\nreturn items;\n"
+            },
+            "id": "b90280e5-4928-4b73-9de7-8e0b0bfcf521",
+            "name": "Ensure Selected Idea",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                336,
+                624
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "function detectLanguage(texts = []) {\n  const combined = texts.filter(Boolean).join(' ').trim();\n  const build = (code, label, instruction = label) => ({ code, label, instruction });\n  if (!combined) {\n    return build('en', 'English');\n  }\n  if (/[一-鿿]/.test(combined)) {\n    return build('zh', 'Chinese', '中文');\n  }\n  if (/[぀-ヿ]/.test(combined)) {\n    return build('ja', 'Japanese', '日本語');\n  }\n  if (/[가-힣]/.test(combined)) {\n    return build('ko', 'Korean', '한국어');\n  }\n  if (/[Ѐ-ӿ]/.test(combined)) {\n    return build('ru', 'Russian', 'Russian');\n  }\n  const latinCandidates = [\n    { code: 'es', label: 'Spanish', instruction: 'Spanish', regex: /[ñáéíóúü¡¿]/i },\n    { code: 'fr', label: 'French', instruction: 'French', regex: /[àâçéèêëîïôùûüÿœæ]/i },\n    { code: 'de', label: 'German', instruction: 'German', regex: /[äöüß]/i },\n    { code: 'pt', label: 'Portuguese', instruction: 'Portuguese', regex: /[ãõáâàéêíóôúç]/i },\n    { code: 'it', label: 'Italian', instruction: 'Italian', regex: /[àèéìíîòóùú]/i }\n  ];\n  for (const candidate of latinCandidates) {\n    if (candidate.regex.test(combined)) {\n      return candidate;\n    }\n  }\n  return build('en', 'English');\n}\n\nconst input = items[0].json;\nconst brand = input.brand_profile;\nconst task = input.content_task;\nconst idea = input.selected_idea;\nconst language = detectLanguage([\n  brand.name,\n  brand.description,\n  brand.audience,\n  idea?.summary,\n  ...(brand.exemplars || [])\n]);\n\nconst exemplars = (brand.exemplars || []).map((text, index) => `范文 ${index + 1}:\\n${text}`).join('\\n\\n');\nconst positive = Array.isArray(brand.tone_guidelines?.positive) ? brand.tone_guidelines.positive.join('; ') : '';\nconst negative = Array.isArray(brand.tone_guidelines?.negative) ? brand.tone_guidelines.negative.join('; ') : '';\nconst videoPlatforms = task.output_platforms.filter(p => ['YouTube', 'Bilibili'].includes(p));\nconst requireVideo = videoPlatforms.length > 0;\n\nconst prompt = [\n  '你是一名资深内容创作顾问，需要基于选定的创意完成多平台内容制作。',\n  `请使用 ${language.instruction} 输出，整体语气与结构需学习提供的范文示例，保证自然、人性化、无 AI 痕迹。`,\n  '',\n  '【品牌背景】',\n  `名称: ${brand.name}`,\n  `描述: ${brand.description}`,\n  `目标受众: ${brand.audience}`,\n  `任务目标: ${task.objective}`,\n  `语调建议: ${positive}`,\n  `语调禁忌: ${negative}`,\n  '',\n  '【范文示例学习】',\n  exemplars,\n  '',\n  '【已选创意】',\n  JSON.stringify(idea, null, 2),\n  '',\n  '请返回一个 JSON 对象，包含 overall_strategy 字段（字符串）以及 platforms 字段（对象）。',\n  'platforms 中每个平台需提供 primary_message、content_piece、call_to_action。',\n  requireVideo ? '对于 YouTube 或 Bilibili，还需提供 video_title、video_description、video_script_outline（条列式脚本大纲）。' : '',\n  '确保所有平台内容都与任务目标一致，并尊重语调规范。',\n  '只输出合法 JSON。'\n].filter(Boolean).join('\\n');\n\nreturn [{\n  json: {\n    phase: input.phase,\n    brand_profile: brand,\n    content_task: task,\n    selected_idea: idea,\n    language_code: language.code,\n    language_label: language.label,\n    language_instruction: language.instruction,\n    requireVideo,\n    content_prompt: prompt\n  }\n}];\n"
+            },
+            "id": "70b25553-8bee-430f-95b7-449c29b33e97",
+            "name": "Content Prompt Builder",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                608,
+                624
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "const raw = items[0].json;\nlet payload = raw;\nif (raw.choices && Array.isArray(raw.choices) && raw.choices[0]?.message?.json) {\n  payload = raw.choices[0].message.json;\n}\nif (!payload.platforms || typeof payload.platforms !== 'object') {\n  throw new Error('缺少 platforms 字段或格式不正确。');\n}\nfor (const [platform, content] of Object.entries(payload.platforms)) {\n  if (!content.primary_message || !content.content_piece || !content.call_to_action) {\n    throw new Error(`平台 ${platform} 缺少 primary_message/content_piece/call_to_action 字段。`);\n  }\n  if (['YouTube', 'Bilibili'].includes(platform)) {\n    if (!content.video_title || !content.video_description || !content.video_script_outline) {\n      throw new Error(`平台 ${platform} 缺少视频字段：video_title / video_description / video_script_outline。`);\n    }\n  }\n}\nreturn [{\n  json: {\n    phase: 'content_production',\n    idea_generation_result: null,\n    content_production_result: payload\n  }\n}];"
+            },
+            "id": "689116ee-ec3c-42e0-b61b-5d3901317391",
+            "name": "Format Content Output",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                1136,
+                624
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "const item = items[0] || {};\nconst result = item.json || {};\n\nif (typeof result.idea_generation_result === 'undefined') {\n  result.idea_generation_result = null;\n}\nif (typeof result.content_production_result === 'undefined') {\n  result.content_production_result = null;\n}\n\nif (!result.phase) {\n  if (result.idea_generation_result) {\n    result.phase = 'idea_generation';\n  } else if (result.content_production_result) {\n    result.phase = 'content_production';\n  } else {\n    result.phase = 'idea_generation';\n  }\n}\n\nresult.workflow_version = 'v2.2';\nresult.timestamp = new Date().toISOString();\n\nreturn [{ json: result }];"
+            },
+            "id": "42a41c42-f7af-4571-98ac-6eaf8339b1f6",
+            "name": "Final Response Dispatcher",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                1136,
+                192
+            ]
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 2.2,
+            "position": [
+                576,
+                192
+            ],
+            "id": "ef00e4e7-45d2-430f-8b24-4f88cb169909",
+            "name": "AI Agent"
+        },
+        {
+            "parameters": {
+                "model": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "gpt-4.1-mini"
+                },
+                "options": {}
+            },
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1.2,
+            "position": [
+                576,
+                352
+            ],
+            "id": "338b414e-1d3d-469d-bb5d-656c0fcdc6e6",
+            "name": "OpenAI Chat Model",
+            "credentials": {
+                "openAiApi": {
+                    "id": "Je52vS5sYZJW2HfD",
+                    "name": "OpenAi account"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "options": {}
+            },
+            "type": "@n8n/n8n-nodes-langchain.agent",
+            "typeVersion": 2.2,
+            "position": [
+                816,
+                624
+            ],
+            "id": "a36ca0d0-8097-40fa-89c1-b1d40d0581bd",
+            "name": "AI Agent1"
+        },
+        {
+            "parameters": {
+                "model": {
+                    "__rl": true,
+                    "mode": "list",
+                    "value": "gpt-4.1-mini"
+                },
+                "options": {}
+            },
+            "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+            "typeVersion": 1.2,
+            "position": [
+                816,
+                784
+            ],
+            "id": "8ca06721-d95c-402a-9304-0c99095b007d",
+            "name": "OpenAI Chat Model1",
+            "credentials": {
+                "openAiApi": {
+                    "id": "Je52vS5sYZJW2HfD",
+                    "name": "OpenAi account"
+                }
+            }
+        }
+    ],
+    "pinData": {},
+    "connections": {
+        "Webhook Trigger": {
+            "main": [
+                [
+                    {
+                        "node": "Validate Input",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Validate Input": {
+            "main": [
+                [
+                    {
+                        "node": "Phase Switch",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Phase Switch": {
+            "main": [
+                [
+                    {
+                        "node": "Idea Prompt Builder",
+                        "type": "main",
+                        "index": 0
+                    }
+                ],
+                [
+                    {
+                        "node": "Ensure Selected Idea",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Idea Output": {
+            "main": [
+                [
+                    {
+                        "node": "Final Response Dispatcher",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Ensure Selected Idea": {
+            "main": [
+                [
+                    {
+                        "node": "Content Prompt Builder",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Idea Prompt Builder": {
+            "main": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI Chat Model": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI Agent",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Agent": {
+            "main": [
+                [
+                    {
+                        "node": "Format Idea Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Content Prompt Builder": {
+            "main": [
+                [
+                    {
+                        "node": "AI Agent1",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Agent1": {
+            "main": [
+                [
+                    {
+                        "node": "Format Content Output",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Format Content Output": {
+            "main": [
+                [
+                    {
+                        "node": "Final Response Dispatcher",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "OpenAI Chat Model1": {
+            "ai_languageModel": [
+                [
+                    {
+                        "node": "AI Agent1",
+                        "type": "ai_languageModel",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "active": true,
+    "settings": {
+        "executionOrder": "v1"
+    },
+    "versionId": "1adcc7b9-34b6-4685-ab51-4d928539724d",
+    "meta": {
+        "templateCredsSetupCompleted": true,
+        "instanceId": "2463e961fdce6478bd33f5f55ac10209ff4b02d01877d82fabb0fcfd749843cb"
+    },
+    "id": "mGdrQbPb8eFruYlh",
+    "tags": []
+}
