@@ -1,0 +1,415 @@
+{
+  "name": "Test 6 - Without Save Content",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "manual-trigger-stage1",
+      "name": "Stage 1 Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 1 Configuration\nconst brand_profile = {\n  name: \"TechFlow AI\",\n  description: \"An innovative AI-powered workflow automation platform\",\n  audience: \"Small business owners, startup founders\",\n  tone_guidelines: {\n    positive: [\"professional\", \"approachable\", \"data-driven\"],\n    negative: [\"overly technical\", \"salesy\", \"buzzwords\"]\n  },\n  exemplars: [\n    \"We built our startup from zero to $1M ARR in 18 months. Here's what worked: Focus on one problem, build in public, create content that teaches. We automated 80% of our sales pipeline.\",\n    \"Most tools feel built by engineers for engineers. We interviewed 50 business owners, watched them struggle, then built solutions they could set up in 5 minutes. Result: 3x faster onboarding.\",\n    \"Uncomfortable truth: more tools don't help. What helps is ONE system connecting everything. Think of it as your business's nervous system.\"\n  ]\n};\n\nconst content_task = {\n  objective: \"product_promotion\",\n  source_type: \"reddit\",\n  source_value: \"smallbusiness,Entrepreneur,startups\",\n  output_platforms: [\"X\", \"LinkedIn\", \"XiaoHongShu\", \"YouTube\", \"Bilibili\"],\n  language: \"auto\"\n};\n\nreturn [{ json: { brand_profile, content_task, stage: \"idea_generation\" } }];"
+      },
+      "id": "load-config-stage1",
+      "name": "Load Config Stage 1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "search",
+        "subreddit": "={{ $json.content_task.source_value.split(',')[0] }}",
+        "keyword": "looking for solution",
+        "limit": 5
+      },
+      "id": "reddit-fetch",
+      "name": "Reddit Fetch",
+      "type": "n8n-nodes-base.reddit",
+      "typeVersion": 1,
+      "position": [
+        680,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition"
+      },
+      "id": "merge-config-trending",
+      "name": "Merge Config",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        900,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "reddit_title",
+              "value": "={{ $json.title || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "a2",
+              "name": "reddit_text",
+              "value": "={{ ($json.selftext || '').substring(0, 500) }}",
+              "type": "string"
+            },
+            {
+              "id": "a3",
+              "name": "upvotes",
+              "value": "={{ $json.ups || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "a4",
+              "name": "url",
+              "value": "={{ $json.url || '' }}",
+              "type": "string"
+            }
+          ]
+        }
+      },
+      "id": "extract-fields",
+      "name": "Extract Fields",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1120,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# ROLE: Expert Content Strategist\n\n# BRAND CONTEXT\nBrand: {{ $json.brand_profile.name }}\nDescription: {{ $json.brand_profile.description }}\nAudience: {{ $json.brand_profile.audience }}\nObjective: {{ $json.content_task.objective }}\n\nTone DO: {{ $json.brand_profile.tone_guidelines.positive.join(', ') }}\nTone DONT: {{ $json.brand_profile.tone_guidelines.negative.join(', ') }}\n\n# TRENDING TOPIC\nTitle: {{ $json.reddit_title }}\nContent: {{ $json.reddit_text }}\nEngagement: {{ $json.upvotes }} upvotes\n\n# TASK\nGenerate 3 content ideas aligned with the objective.\n\n# OUTPUT (JSON ONLY)\n{\n  \"ideas\": [\n    {\n      \"id\": \"idea_1\",\n      \"title\": \"string\",\n      \"core_message\": \"string\",\n      \"hook\": \"string\",\n      \"platform_fit\": {\n        \"X\": \"string\",\n        \"LinkedIn\": \"string\",\n        \"XiaoHongShu\": \"string\",\n        \"YouTube\": \"string\",\n        \"Bilibili\": \"string\"\n      },\n      \"target_emotion\": \"string\",\n      \"cta\": \"string\"\n    }\n  ],\n  \"trending_insight\": \"string\",\n  \"recommendation\": \"string\"\n}",
+        "hasOutputParser": true
+      },
+      "id": "ai-generate-ideas",
+      "name": "AI Generate Ideas",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1340,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.7
+        }
+      },
+      "id": "openai-model-ideas",
+      "name": "OpenAI Model Ideas",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        1340,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"ideas\": [\n    {\n      \"id\": \"string\",\n      \"title\": \"string\",\n      \"core_message\": \"string\",\n      \"hook\": \"string\",\n      \"platform_fit\": {\n        \"X\": \"string\",\n        \"LinkedIn\": \"string\",\n        \"XiaoHongShu\": \"string\",\n        \"YouTube\": \"string\",\n        \"Bilibili\": \"string\"\n      },\n      \"target_emotion\": \"string\",\n      \"cta\": \"string\"\n    }\n  ],\n  \"trending_insight\": \"string\",\n  \"recommendation\": \"string\"\n}",
+        "autoFix": true
+      },
+      "id": "output-parser-ideas",
+      "name": "Output Parser Ideas",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        1480,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Timestamp": "={{ $now.toISO() }}",
+            "Brand": "={{ $('Load Config Stage 1').item.json.brand_profile.name }}",
+            "Objective": "={{ $('Load Config Stage 1').item.json.content_task.objective }}",
+            "Ideas": "={{ JSON.stringify($json.output.ideas) }}",
+            "Insight": "={{ $json.output.trending_insight }}",
+            "Recommendation": "={{ $json.output.recommendation }}"
+          }
+        }
+      },
+      "id": "save-ideas-sheets",
+      "name": "Save Ideas",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1700,
+        300
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "manual-trigger-stage2",
+      "name": "Stage 2 Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Stage 2 Configuration\nconst brand_profile = {\n  name: \"TechFlow AI\",\n  description: \"AI-powered workflow automation platform\",\n  audience: \"Small business owners, startup founders\",\n  tone_guidelines: {\n    positive: [\"professional\", \"approachable\", \"data-driven\"],\n    negative: [\"overly technical\", \"salesy\", \"buzzwords\"]\n  },\n  exemplars: [\n    \"We built our startup from zero to $1M ARR in 18 months. Here's what worked: Focus on one problem, build in public, create content that teaches. We automated 80% of our sales pipeline.\",\n    \"Most tools feel built by engineers for engineers. We interviewed 50 business owners, watched them struggle, then built solutions they could set up in 5 minutes. Result: 3x faster onboarding.\",\n    \"Uncomfortable truth: more tools don't help. What helps is ONE system connecting everything. Think of it as your business's nervous system.\"\n  ]\n};\n\nconst content_task = {\n  objective: \"product_promotion\",\n  output_platforms: [\"X\", \"LinkedIn\", \"XiaoHongShu\", \"YouTube\", \"Bilibili\"],\n  language: \"auto\"\n};\n\nconst selected_idea = {\n  id: \"idea_1\",\n  title: \"From Chaos to Clarity: Automation Success Story\",\n  core_message: \"Small businesses waste 40% time on repetitive tasks\",\n  hook: \"I worked 80-hour weeks until I discovered automation\",\n  platform_fit: {\n    X: \"Thread format showing transformation\",\n    LinkedIn: \"Professional storytelling with data\",\n    XiaoHongShu: \"Visual guide with steps\",\n    YouTube: \"Screen-share tutorial\",\n    Bilibili: \"Tech tutorial with personality\"\n  },\n  target_emotion: \"inspiration\",\n  cta: \"Try 14-day free audit\"\n};\n\nreturn [{ json: { brand_profile, content_task, selected_idea, stage: \"content_production\" } }];"
+      },
+      "id": "load-config-stage2",
+      "name": "Load Config Stage 2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=# ROLE: Writing Style Analyst\n\n# EXEMPLARS TO ANALYZE\n{{ $json.brand_profile.exemplars.map((ex, i) => `Exemplar ${i+1}: ${ex}`).join('\\n\\n') }}\n\n# TASK\nAnalyze these samples and identify:\n1. Sentence structure patterns\n2. Vocabulary choices\n3. Narrative techniques\n4. Emotional tone\n5. Formatting and rhythm\n\nProvide a detailed style guide with specific patterns to follow."
+      },
+      "id": "ai-learn-style",
+      "name": "AI Learn Style",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        680,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "model": "gpt-4o",
+        "options": {
+          "temperature": 0.3
+        }
+      },
+      "id": "openai-model-analysis",
+      "name": "OpenAI Model Analysis",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        680,
+        980
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition"
+      },
+      "id": "merge-style-config",
+      "name": "Merge Style",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        900,
+        800
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## STAGE 1: IDEA GENERATION\n\nGenerates 3-5 content ideas\nbased on trending topics\n\nEdit 'Load Config Stage 1'\nto customize",
+        "height": 200,
+        "width": 240
+      },
+      "id": "note-stage1",
+      "name": "Note Stage 1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## STAGE 2: CONTENT PRODUCTION\n\nLearns from exemplars\nand produces content\n\nEdit 'Load Config Stage 2'\nwith selected idea",
+        "height": 200,
+        "width": 240
+      },
+      "id": "note-stage2",
+      "name": "Note Stage 2",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        180,
+        700
+      ]
+    }
+  ],
+  "connections": {
+    "Stage 1 Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Config Stage 1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config Stage 1": {
+      "main": [
+        [
+          {
+            "node": "Reddit Fetch",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reddit Fetch": {
+      "main": [
+        [
+          {
+            "node": "Merge Config",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Config": {
+      "main": [
+        [
+          {
+            "node": "Extract Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Fields": {
+      "main": [
+        [
+          {
+            "node": "AI Generate Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Generate Ideas": {
+      "main": [
+        [
+          {
+            "node": "Save Ideas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model Ideas": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Generate Ideas",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser Ideas": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Generate Ideas",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stage 2 Trigger": {
+      "main": [
+        [
+          {
+            "node": "Load Config Stage 2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Load Config Stage 2": {
+      "main": [
+        [
+          {
+            "node": "AI Learn Style",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Style",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "AI Learn Style": {
+      "main": [
+        [
+          {
+            "node": "Merge Style",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model Analysis": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Learn Style",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "tags": []
+}
